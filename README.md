@@ -134,6 +134,8 @@ Use the **per-plugin tuple form** — `[pluginSpec, optionsObject]` — to pass 
 | `approvalHistoryEnabled` | `true` | Remember each human Approve/Reject decision made via the OpenCode TUI or our notification, and surface recent ones to the classifier as prior-decision context. Session-scoped, in-memory only. |
 | `approvalHistoryMax` | `20` | Per-session cap on how many recent human decisions the classifier sees. `0` disables playback (entries are still recorded; just not surfaced). |
 | `notifyOnClassifierFailure` | `true` | When the classifier ultimately fails to produce a verdict (after retries), fire an informational desktop notification so you know a transient error happened. The notification is **Reject-only** — it never offers a one-click Approve on an unclassified command. The TUI prompt is always shown too. Set `false` to keep failures silent. |
+| `jevEnabled` | `true` | Pre-screen each request with TypeSafe's [Jev](https://docs.typesafe.ai) before the LLM classifier. Only active when `TYPESAFE_API_KEY` is set. Jev can only fast-path SAFE; it never marks anything RISKY, and any Jev error falls through to the LLM. |
+| `jevSafeThreshold` | `0.8` | Minimum Jev P(safe) (0–1) to auto-classify SAFE without calling the LLM. Below this, the request escalates to the LLM classifier. |
 | `classifierFailureNotifyCooldownMs` | `60000` | Rate-limit window for failure notifications. At most one fires per window; a burst during an outage collapses into a single notification instead of spamming you. `0` disables the rate limit. |
 
 ### Use OpenCode's existing permission rules for fast-path patterns

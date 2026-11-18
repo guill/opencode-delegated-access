@@ -107,6 +107,18 @@ export const ConfigSchema = z.object({
     .min(0)
     .max(3_600_000)
     .default(60_000),
+
+  /**
+   * Pre-screen permissions with TypeSafe's Jev before the LLM classifier.
+   * Only active when `TYPESAFE_API_KEY` is set in the environment.
+   */
+  jevEnabled: z.boolean().default(true),
+
+  /**
+   * Minimum Jev P(safe) to auto-classify SAFE without calling the LLM.
+   * Anything below (or any Jev error) escalates to the LLM classifier.
+   */
+  jevSafeThreshold: z.number().min(0).max(1).default(0.8),
 })
 
 export type DelegatedAccessConfig = z.infer<typeof ConfigSchema>

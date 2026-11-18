@@ -4,7 +4,9 @@ import {
   extractLastUserMessages,
   extractLatestAssistantModel,
   extractRootAgent,
+  extractAgentCreatedFiles,
   getSessionMessages,
+  type MessageEntry,
 } from "../ui/messages.ts"
 import {
   classifyCommand,
@@ -21,8 +23,10 @@ import {
   DIRECTORY_CLASSIFIER_SYSTEM_PROMPT,
   buildDirectoryClassifierUserPrompt,
 } from "../classifier/prompt.ts"
+import { judgeWithJev } from "../classifier/jev.ts"
+import type { Verdict } from "../classifier/parse.ts"
 import { DirectoryVerdictCache } from "./directory-cache.ts"
-import { ApprovalHistoryStore } from "./approval-history.ts"
+import { ApprovalHistoryStore, type ApprovalEntry } from "./approval-history.ts"
 import { PendingSubjectsMap } from "./pending-subjects.ts"
 import { runSafePath } from "./safe-path.ts"
 import type { SafePathBatcher } from "./safe-path-batcher.ts"
@@ -123,6 +127,8 @@ export type HandlerContext = {
    * have to be rewritten.
    */
   getRepoContext?: () => Promise<DualRepoContext | RepoContext | null>
+  /** TypeSafe API key. When unset, the Jev pre-screen is skipped. */
+  jevApiKey?: string
 }
 
 /**
@@ -475,8 +481,21 @@ async function handleSubjectPermission(args: {
     failureClass = fc
   }
 
+  const jevVerdict = await jevPrescreen({
+    ctx,
+    subject,
+    subjectLabel,
+    userMessages,
+    priorApprovals,
+    repoContext,
+    rootEntries: entries,
+    rootSessionID,
+    permissionSessionID: permission.sessionID,
+    base,
+  })
   const verdict =
-    systemPrompt === null
+    jevVerdict ??
+    (systemPrompt === null
       ? // Bash path: use the convenience wrapper that supplies the bash prompt.
         await classifyCommand({ ...commonClassifyArgs, command: subject, onFailure })
       : // Generic path (e.g. directory): caller supplies the system prompt.
@@ -486,7 +505,7 @@ async function handleSubjectPermission(args: {
           systemPrompt,
           buildUserPrompt: buildDirectoryClassifierUserPrompt,
           onFailure,
-        })
+        }))
 
   if (!verdict) {
     log.warn("classifier failed; leaving TUI prompt alone", {
@@ -536,6 +555,56 @@ async function handleSubjectPermission(args: {
     output,
     base,
   })
+}
+
+/**
+ * Returns a SAFE verdict when Jev's P(safe) clears `jevSafeThreshold`, else
+ * null (escalate to the LLM). Jev errors also return null — a failed call is
+ * never treated as an answer.
+ */
+async function jevPrescreen(args: {
+  ctx: HandlerContext
+  subject: string
+  subjectLabel: "command" | "path"
+  userMessages: string[]
+  priorApprovals: ApprovalEntry[]
+  repoContext: DualRepoContext | RepoContext | null
+  rootEntries: MessageEntry[]
+  rootSessionID: string
+  permissionSessionID: string
+  base: Record<string, unknown>
+}): Promise<Verdict | null> {
+  const { ctx, subject, subjectLabel, userMessages, rootEntries, base } = args
+  if (!ctx.config.jevEnabled || !ctx.jevApiKey) return null
+  try {
+    // Subagents usually do the writing, so include the permission's own
+    // session when it isn't the root. simplification: sibling subagents'
+    // files are not seen.
+    const entries =
+      subjectLabel === "command" && args.permissionSessionID !== args.rootSessionID
+        ? [...rootEntries, ...(await getSessionMessages(ctx.client, args.permissionSessionID))]
+        : rootEntries
+    const { pSafe, answers } = await judgeWithJev({
+      apiKey: ctx.jevApiKey,
+      subjectLabel,
+      subject,
+      userMessages,
+      priorApprovals: args.priorApprovals,
+      repoContext: args.repoContext,
+      agentCreatedFiles: extractAgentCreatedFiles(entries),
+      timeoutMs: ctx.config.classifierTimeoutMs,
+    })
+    const threshold = ctx.config.jevSafeThreshold
+    ctx.log.info("jev pre-screen", { ...base, pSafe, threshold, answers })
+    if (pSafe < threshold) return null
+    return { verdict: "SAFE", reason: `Jev P(safe)=${pSafe.toFixed(2)}` }
+  } catch (e) {
+    ctx.log.warn("jev pre-screen failed; escalating to LLM classifier", {
+      ...base,
+      error: e instanceof Error ? e.message : String(e),
+    })
+    return null
+  }
 }
 
 // ---------------------------------------------------------------------------

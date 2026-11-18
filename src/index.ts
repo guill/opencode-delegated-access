@@ -386,6 +386,7 @@ const DelegatedAccess: Plugin = async (
       ephemeralSystemRegistry,
       log,
       getRepoContext,
+      jevApiKey: process.env.TYPESAFE_API_KEY,
     }
   }
 

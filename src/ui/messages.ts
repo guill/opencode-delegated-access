@@ -198,6 +198,26 @@ export function extractLatestAssistantModel(
 }
 
 /**
+ * Paths of files the agent CREATED via the `write` tool (opencode records
+ * `metadata.exists: false` for new files). Read from tool state, not agent
+ * prose, so the agent can't fake an entry by claiming it in text.
+ *
+ * simplification: only the `write` tool is tracked; files created by bash or
+ * patch tools are not, so deleting those still escalates to the LLM.
+ */
+export function extractAgentCreatedFiles(entries: MessageEntry[]): string[] {
+  const files = new Set<string>()
+  for (const { parts } of entries) {
+    for (const p of parts) {
+      if (p.type !== "tool" || p.tool !== "write" || p.state.status !== "completed") continue
+      const path = p.state.input.filePath
+      if (p.state.metadata.exists === false && typeof path === "string") files.add(path)
+    }
+  }
+  return [...files]
+}
+
+/**
  * Thin I/O wrapper: fetch the session's messages via the SDK and return the
  * raw entries so callers can run multiple pure extractors against a single
  * HTTP call.

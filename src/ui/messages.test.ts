@@ -9,6 +9,27 @@ import {
   CLASSIFIER_MESSAGE_MAX_CHARS,
 } from "./messages.ts"
 import type { MessageEntry } from "./messages.ts"
+import { extractAgentCreatedFiles } from "./messages.ts"
+
+describe("extractAgentCreatedFiles", () => {
+  const write = (filePath: string, exists: boolean, status = "completed") =>
+    ({ type: "tool", tool: "write", state: { status, input: { filePath }, metadata: { exists } } })
+
+  it("returns only files the write tool newly created", () => {
+    const entries = [
+      {
+        info: { role: "assistant" },
+        parts: [
+          write("/p/new.ts", false),
+          write("/p/existing.ts", true),
+          write("/p/failed.ts", false, "error"),
+          { type: "text", text: "I created /p/fake.ts" },
+        ],
+      },
+    ] as unknown as MessageEntry[]
+    expect(extractAgentCreatedFiles(entries)).toEqual(["/p/new.ts"])
+  })
+})
 
 /**
  * Build a synthetic message entry for tests. The SDK returns a heavy shape;

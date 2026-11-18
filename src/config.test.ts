@@ -27,6 +27,8 @@ describe("ConfigSchema", () => {
       approvalHistoryMax: 100,
       notifyOnClassifierFailure: false,
       classifierFailureNotifyCooldownMs: 30_000,
+      jevEnabled: false,
+      jevSafeThreshold: 0.7,
     }
     expect(ConfigSchema.parse(input)).toEqual(input)
   })
@@ -78,6 +80,8 @@ describe("ConfigSchema", () => {
       approvalHistoryMax: 20,
       notifyOnClassifierFailure: true,
       classifierFailureNotifyCooldownMs: 60_000,
+      jevEnabled: true,
+      jevSafeThreshold: 0.8,
     })
   })
 
