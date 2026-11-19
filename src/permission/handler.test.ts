@@ -869,9 +869,11 @@ describe("handlePermissionEvent", () => {
     expect(mockedResolveRoot).toHaveBeenCalledTimes(1)
     expect(mockedResolveRoot.mock.calls[0]?.[1]).toBe("sess_subagent")
 
-    // Messages must come from the ROOT session, not the subagent.
-    expect(mockedGetSessionMessages).toHaveBeenCalledTimes(1)
+    // User messages must come from the ROOT session, not the subagent. The
+    // subagent session is read afterwards only for agent-created files.
+    expect(mockedGetSessionMessages).toHaveBeenCalledTimes(2)
     expect(mockedGetSessionMessages.mock.calls[0]?.[1]).toBe("sess_root")
+    expect(mockedGetSessionMessages.mock.calls[1]?.[1]).toBe("sess_subagent")
   })
 
   it("fetches messages from the permission's own sessionID for a root session", async () => {

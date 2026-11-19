@@ -481,6 +481,10 @@ async function handleSubjectPermission(args: {
     failureClass = fc
   }
 
+  const agentCreatedFiles =
+    subjectLabel === "command"
+      ? await collectAgentCreatedFiles(ctx, entries, rootSessionID, permission.sessionID, base)
+      : []
   const jevVerdict = await jevPrescreen({
     ctx,
     subject,
@@ -488,16 +492,14 @@ async function handleSubjectPermission(args: {
     userMessages,
     priorApprovals,
     repoContext,
-    rootEntries: entries,
-    rootSessionID,
-    permissionSessionID: permission.sessionID,
+    agentCreatedFiles,
     base,
   })
   const verdict =
     jevVerdict ??
     (systemPrompt === null
       ? // Bash path: use the convenience wrapper that supplies the bash prompt.
-        await classifyCommand({ ...commonClassifyArgs, command: subject, onFailure })
+        await classifyCommand({ ...commonClassifyArgs, command: subject, agentCreatedFiles, onFailure })
       : // Generic path (e.g. directory): caller supplies the system prompt.
         await classifySubject({
           ...commonClassifyArgs,
@@ -558,6 +560,34 @@ async function handleSubjectPermission(args: {
 }
 
 /**
+ * Files the agent created via the write tool, shown to both Jev and the LLM.
+ * Subagents usually do the writing, so the permission's own session is read
+ * too when it isn't the root. A fetch failure only drops that session's files
+ * (fewer files = stricter), never blocks classification.
+ *
+ * simplification: sibling subagents' files are not seen.
+ */
+async function collectAgentCreatedFiles(
+  ctx: HandlerContext,
+  rootEntries: MessageEntry[],
+  rootSessionID: string,
+  permissionSessionID: string,
+  base: Record<string, unknown>,
+): Promise<string[]> {
+  if (permissionSessionID === rootSessionID) return extractAgentCreatedFiles(rootEntries)
+  try {
+    const own = await getSessionMessages(ctx.client, permissionSessionID)
+    return extractAgentCreatedFiles([...rootEntries, ...own])
+  } catch (e) {
+    ctx.log.warn("could not read subagent session for created files", {
+      ...base,
+      error: e instanceof Error ? e.message : String(e),
+    })
+    return extractAgentCreatedFiles(rootEntries)
+  }
+}
+
+/**
  * Returns a SAFE verdict when Jev's P(safe) clears `jevSafeThreshold`, else
  * null (escalate to the LLM). Jev errors also return null — a failed call is
  * never treated as an answer.
@@ -569,21 +599,12 @@ async function jevPrescreen(args: {
   userMessages: string[]
   priorApprovals: ApprovalEntry[]
   repoContext: DualRepoContext | RepoContext | null
-  rootEntries: MessageEntry[]
-  rootSessionID: string
-  permissionSessionID: string
+  agentCreatedFiles: string[]
   base: Record<string, unknown>
 }): Promise<Verdict | null> {
-  const { ctx, subject, subjectLabel, userMessages, rootEntries, base } = args
+  const { ctx, subject, subjectLabel, userMessages, base } = args
   if (!ctx.config.jevEnabled || !ctx.jevApiKey) return null
   try {
-    // Subagents usually do the writing, so include the permission's own
-    // session when it isn't the root. simplification: sibling subagents'
-    // files are not seen.
-    const entries =
-      subjectLabel === "command" && args.permissionSessionID !== args.rootSessionID
-        ? [...rootEntries, ...(await getSessionMessages(ctx.client, args.permissionSessionID))]
-        : rootEntries
     const { pSafe, answers } = await judgeWithJev({
       apiKey: ctx.jevApiKey,
       subjectLabel,
@@ -591,7 +612,7 @@ async function jevPrescreen(args: {
       userMessages,
       priorApprovals: args.priorApprovals,
       repoContext: args.repoContext,
-      agentCreatedFiles: extractAgentCreatedFiles(entries),
+      agentCreatedFiles: args.agentCreatedFiles,
       timeoutMs: ctx.config.classifierTimeoutMs,
     })
     const threshold = ctx.config.jevSafeThreshold

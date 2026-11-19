@@ -94,7 +94,8 @@ describe("judgeWithJev", () => {
       ...base,
       fetchImpl: fakeFetch(200, {
         answers: {
-          sensitive: noul(0.1),
+          secrets: noul(0.1),
+          system_config: noul(0.05),
           outside_home: noul(0),
           routine: noul(0.95),
           requested: noul(0.5),

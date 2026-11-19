@@ -401,9 +401,9 @@ export function classifyCommand(
   args: Omit<
     Parameters<typeof classifySubject>[0],
     "subject" | "systemPrompt" | "buildUserPrompt"
-  > & { command: string },
+  > & { command: string; agentCreatedFiles?: string[] },
 ): ReturnType<typeof classifySubject> {
-  const { command, ...rest } = args
+  const { command, agentCreatedFiles, ...rest } = args
   return classifySubject({
     ...rest,
     subject: command,
@@ -414,6 +414,7 @@ export function classifyCommand(
         userMessages,
         repoContext: repoContext ?? null,
         priorApprovals: priorApprovals ?? [],
+        agentCreatedFiles,
       }),
   })
 }

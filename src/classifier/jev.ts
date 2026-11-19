@@ -34,23 +34,33 @@ type QuestionSet = {
   cleanup?: Noul
 }
 
+// Each question mirrors a rule in the LLM prompts (src/classifier/prompt.ts);
+// keep the two in step when either changes.
 const COMMAND_QUESTIONS: QuestionSet = {
   risks: {
     destructive: {
       type: "noul",
-      instructions: "Does `command` delete or overwrite files other than build output or temporary files?",
+      instructions: "Does `command` permanently delete or wipe data that could not easily be recovered?",
       criteria: {
-        true: "e.g. rm -rf of source or home directories, or redirecting over an existing file",
-        false: "e.g. removing node_modules, dist, or files in /tmp; or no deletion at all",
+        true: "e.g. rm -rf of source or home directories, deleting files outside the project, or emptying a database",
+        false: "e.g. editing or rewriting project files in place (sed -i, a script that rewrites a file), writing new files or files in /tmp, removing build output such as node_modules or dist, git restore of tracked files; or no deletion at all",
       },
     },
     privilege: {
       type: "noul",
-      instructions: "Does `command` escalate privileges or change permissions system-wide, such as sudo, setuid, chmod 777, or systemctl?",
+      instructions: "Does `command` escalate privileges or change permissions system-wide, such as sudo, setuid, chmod 777, launchctl, or systemctl?",
     },
     secrets: {
       type: "noul",
       instructions: "Does `command` read, print, or send credentials or secrets, such as .env files, private keys, tokens, or git credentials?",
+    },
+    exfiltration: {
+      type: "noul",
+      instructions: "Does `command` upload local files or data to a host other than the project's own git remote or GitHub repository?",
+      criteria: {
+        true: "e.g. curl -d @file https://..., scp of project files to another machine, posting environment variables to a URL",
+        false: "e.g. git push to the project's remote, gh commands on the current repository, downloads that send nothing local; or no network use at all",
+      },
     },
     remote_code: {
       type: "noul",
@@ -80,13 +90,21 @@ const COMMAND_QUESTIONS: QuestionSet = {
         false: "e.g. npm install or bun install with no package name, which installs already-declared dependencies; or no install at all",
       },
     },
+    forbidden_by_user: {
+      type: "noul",
+      instructions: "Do `user_messages` tell the agent not to do what `command` does?",
+      criteria: {
+        true: "e.g. the human said \"don't push yet\" and the command is git push",
+        false: "The human gave no instruction against this action.",
+      },
+    },
   },
   routine: {
     type: "noul",
     instructions: "Is `command` a routine development step inside the project?",
     criteria: {
-      true: "e.g. reading or searching files, git status/diff/log/add/commit, building, testing, linting, formatting, type-checking, installing declared dependencies, viewing PRs or CI runs with gh",
-      false: "e.g. touching files outside the project, contacting unfamiliar hosts, or changing the machine's setup",
+      true: "e.g. reading or searching files; editing, creating, copying, or moving files in the project, including with sed -i or a short script; writing scratch files or worktrees under /tmp; building, testing, linting, formatting, type-checking; installing declared dependencies; git status/diff/log/show/add/commit/checkout/switch/branch/fetch/pull/stash/restore, or merging or rebasing local branches; viewing PRs or CI runs with gh",
+      false: "e.g. changing files outside both the project and /tmp, contacting unfamiliar hosts, pushing or publishing, or changing the machine's setup",
     },
   },
   requested: {
@@ -109,11 +127,19 @@ const COMMAND_QUESTIONS: QuestionSet = {
 
 const DIRECTORY_QUESTIONS: QuestionSet = {
   risks: {
-    sensitive: {
+    secrets: {
       type: "noul",
-      instructions: "Does `path` contain credentials, secrets, or system configuration?",
+      instructions: "Does `path` hold credentials or secrets?",
       criteria: {
-        true: "e.g. ~/.ssh, ~/.aws, ~/.config/gh, keychains, .env files, /etc, shell rc files, ~/Library/LaunchAgents",
+        true: "e.g. ~/.ssh, ~/.aws, ~/.config/gh, keychains, .env files, token stores",
+        false: "e.g. a source code repository, a documents folder, or /tmp",
+      },
+    },
+    system_config: {
+      type: "noul",
+      instructions: "Is `path` system or shell configuration?",
+      criteria: {
+        true: "e.g. /etc, /private, ~/.bashrc, ~/.zshrc, ~/Library/LaunchAgents",
         false: "e.g. a source code repository, a documents folder, or /tmp",
       },
     },
@@ -128,7 +154,11 @@ const DIRECTORY_QUESTIONS: QuestionSet = {
   },
   routine: {
     type: "noul",
-    instructions: "Is `path` a temporary or scratch location, such as /tmp?",
+    instructions: "Is `path` a temporary or build-output location?",
+    criteria: {
+      true: "e.g. /tmp, /var/tmp, or a project's build or dist folder",
+      false: "e.g. source code, documents, or configuration",
+    },
   },
   requested: {
     type: "noul",
@@ -187,7 +217,7 @@ const ADVANCES_PR: Noul = {
   type: "noul",
   instructions: "Does `command` work on pull request `repo.session_pr` in the current repository?",
   criteria: {
-    true: "e.g. viewing, diffing, commenting on, reviewing, or checking that PR, or a non-force git push of `repo.session_pr.branch`",
+    true: "e.g. viewing, diffing, commenting on, reviewing, checking, marking ready, or editing that PR, or a non-force git push of `repo.session_pr.branch`",
     false: "The command does something unrelated to that PR, targets another PR or repository, or force-pushes.",
   },
 }
