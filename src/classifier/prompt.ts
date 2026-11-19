@@ -55,6 +55,7 @@ SAFE examples (lean SAFE on these even without an explicit user request, as long
 
 Notes on installs and git:
   - Installing DECLARED dependencies (from package.json/lockfile, requirements.txt, go.mod, Cargo.toml, etc.) is SAFE. But adding a NEW arbitrary package the human did not mention (e.g. \`npm install some-unfamiliar-package\` not already in the manifest) leans RISKY — that introduces new third-party code.
+  - Using a tool from nixpkgs temporarily (nix shell / nix run / nix build / nix eval of a nixpkgs package) or entering the project's own nix develop shell installs nothing into the project or machine and is SAFE. Installing into the user profile (nix profile install), global installs (npm install -g), and running code straight from an arbitrary repo or registry (nix run github:someone/repo, npx some-cli) are NOT covered.
   - Non-destructive git is SAFE; but force push, branch deletion (git branch -D, git push --delete), history rewriting, and changing repo settings remain hard-RISKY (see above) and are NEVER auto-approved.
 
 Using <repo_context> for PR-scoped elevated trust:

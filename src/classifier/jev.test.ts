@@ -11,7 +11,7 @@ describe("combineSafety", () => {
   it("excuses the destructive risk when the command only deletes agent-created files", () => {
     const rm = { destructive: 1, other: 0, routine: 0, requested: 0 }
     expect(combineSafety({ ...rm, cleanup: 0 }, ["destructive", "other"])).toBe(0)
-    expect(combineSafety({ ...rm, cleanup: 0.95 }, ["destructive", "other"])).toBeCloseTo(0.95)
+    expect(combineSafety({ ...rm, cleanup: 0.95 }, ["destructive", "other"])).toBeCloseTo(0.95 * 0.95)
     expect(combineSafety({ ...rm, other: 1, cleanup: 1 }, ["destructive", "other"])).toBe(0)
   })
 
@@ -71,7 +71,20 @@ describe("buildJevRequest", () => {
     expect(req.state.prior_human_decisions).toEqual([
       { decision: "approved", command: "gh pr comment 7 -b x" },
     ])
+    expect(req.questions).toHaveProperty("prior_approved")
+    expect(req.riskKeys).not.toContain("prior_rejected")
+  })
+
+  it("asks about rejections only when the human rejected something", () => {
+    const rejected = { subject: "git push", subjectLabel: "command", response: "reject", classifierVerdict: "RISKY", classifierReason: "", timestamp: 0 } as const
+    const req = buildJevRequest({ ...cmd, priorApprovals: [rejected] })
     expect(req.riskKeys).toContain("prior_rejected")
+    expect(req.questions).not.toHaveProperty("prior_approved")
+  })
+
+  it("counts each risk once, excusing destructive only by cleanup", () => {
+    const a = { destructive: 0.12, other: 0.13, routine: 0.59, requested: 0, cleanup: 0.1 }
+    expect(combineSafety(a, ["destructive", "other"])).toBeCloseTo(0.87 * 0.59)
   })
 })
 
