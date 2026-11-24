@@ -4,10 +4,11 @@ vi.mock("./permission/handler.ts", () => ({
   handlePermissionEvent: vi.fn(),
 }))
 
-import DelegatedAccess, {
+import DelegatedAccess from "./index.ts"
+import {
   handlePermissionReplied,
   normalizeRepliedProperties,
-} from "./index.ts"
+} from "./permission/replied.ts"
 import { handlePermissionEvent } from "./permission/handler.ts"
 import { ApprovalHistoryStore } from "./permission/approval-history.ts"
 import { PendingSubjectsMap } from "./permission/pending-subjects.ts"
