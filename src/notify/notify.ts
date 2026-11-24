@@ -1,4 +1,5 @@
 import notifier from "node-notifier"
+import { execFile } from "node:child_process"
 
 /**
  * The outcome of showing an interactive notification.
@@ -63,6 +64,7 @@ type NotifierCtor = new () => {
  * rejects.
  */
 export function sendNotification(args: NotifyArgs): Promise<NotifyActionResult> {
+  if (process.platform === "linux") return sendLinuxNotification(args)
   const {
     title,
     message,
@@ -120,5 +122,52 @@ export function sendNotification(args: NotifyArgs): Promise<NotifyActionResult> 
         error: e instanceof Error ? e : new Error(String(e)),
       })
     }
+  })
+}
+
+/**
+ * Linux backend: node-notifier's NotificationCenter is macOS-only, so shell
+ * out to libnotify's `notify-send`, which talks to whatever
+ * org.freedesktop.Notifications server is running. `--wait` keeps it alive
+ * until the notification closes; a clicked action's index is printed on
+ * stdout. `closeLabel` and `sound` have no notify-send equivalent.
+ */
+export function sendLinuxNotification(
+  args: NotifyArgs,
+): Promise<NotifyActionResult> {
+  const { title, message, actions = [], timeoutSec = 10 } = args
+  const timeoutMs = timeoutSec * 1000
+  const argv = [
+    "--app-name=opencode",
+    `--expire-time=${timeoutMs}`,
+    "--wait",
+    ...actions.map((label, i) => `--action=${i}=${label}`),
+    "--",
+    title,
+    message,
+  ]
+  const started = Date.now()
+
+  return new Promise((resolve) => {
+    execFile("notify-send", argv, (err, stdout) => {
+      if (err) {
+        resolve({ type: "error", error: err })
+        return
+      }
+      const label = actions[Number.parseInt(stdout.trim(), 10)]
+      if (label !== undefined) {
+        resolve({ type: "action", label })
+        return
+      }
+      // simplification: notify-send doesn't report the close reason, so a
+      // close before the timeout elapsed counts as a user dismissal. Erring
+      // toward "cancel" keeps a dismissed safe-path countdown from
+      // auto-approving. Upgrade path: listen for NotificationClosed over D-Bus.
+      resolve(
+        Date.now() - started >= timeoutMs - 250
+          ? { type: "timeout" }
+          : { type: "cancel" },
+      )
+    })
   })
 }

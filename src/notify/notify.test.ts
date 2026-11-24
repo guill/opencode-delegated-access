@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import { sendNotification } from "./notify.ts"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { sendNotification, sendLinuxNotification } from "./notify.ts"
 import type { NotifyActionResult } from "./notify.ts"
 
 // We mock the NotificationCenter constructor so tests don't pop a real
@@ -13,7 +13,10 @@ vi.mock("node-notifier", () => {
   }
 })
 
+vi.mock("node:child_process", () => ({ execFile: vi.fn() }))
+
 import nn from "node-notifier"
+import { execFile } from "node:child_process"
 
 type NotifyArgs = {
   title: string
@@ -62,8 +65,16 @@ function installMockScenario(scenario: {
   return instances
 }
 
+const realPlatform = process.platform
+
 beforeEach(() => {
   vi.clearAllMocks()
+  // The NotificationCenter tests below exercise the macOS backend.
+  Object.defineProperty(process, "platform", { value: "darwin" })
+})
+
+afterEach(() => {
+  Object.defineProperty(process, "platform", { value: realPlatform })
 })
 
 describe("sendNotification", () => {
@@ -183,5 +194,72 @@ describe("sendNotification", () => {
 
     await sendNotification({ title: "t", message: "m" })
     expect(instances[0]?.lastOptions?.wait).toBe(true)
+  })
+})
+
+describe("sendLinuxNotification", () => {
+  type ExecCb = (err: Error | null, stdout: string) => void
+  const execMock = execFile as unknown as ReturnType<typeof vi.fn>
+
+  function answer(err: Error | null, stdout: string) {
+    execMock.mockImplementation((_cmd: string, _argv: string[], cb: ExecCb) =>
+      cb(err, stdout),
+    )
+  }
+
+  it("is selected by sendNotification on linux", async () => {
+    Object.defineProperty(process, "platform", { value: "linux" })
+    answer(null, "")
+    await sendNotification({ title: "T", message: "m" })
+    expect(execMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("passes indexed actions, timeout, and wait to notify-send", async () => {
+    answer(null, "1\n")
+    const result = await sendLinuxNotification({
+      title: "T",
+      message: "m",
+      actions: ["Approve", "Reject"],
+      timeoutSec: 30,
+    })
+    expect(execMock.mock.calls[0]?.[0]).toBe("notify-send")
+    expect(execMock.mock.calls[0]?.[1]).toEqual([
+      "--app-name=opencode",
+      "--expire-time=30000",
+      "--wait",
+      "--action=0=Approve",
+      "--action=1=Reject",
+      "--",
+      "T",
+      "m",
+    ])
+    expect(result).toEqual({ type: "action", label: "Reject" })
+  })
+
+  it("treats an early close as cancel, never timeout", async () => {
+    answer(null, "")
+    const result = await sendLinuxNotification({
+      title: "T",
+      message: "m",
+      timeoutSec: 30,
+    })
+    expect(result).toEqual({ type: "cancel" })
+  })
+
+  it("treats a close after the timeout as timeout", async () => {
+    answer(null, "")
+    const result = await sendLinuxNotification({
+      title: "T",
+      message: "m",
+      timeoutSec: 0,
+    })
+    expect(result).toEqual({ type: "timeout" })
+  })
+
+  it("returns error when notify-send fails", async () => {
+    const err = new Error("ENOENT")
+    answer(err, "")
+    const result = await sendLinuxNotification({ title: "T", message: "m" })
+    expect(result).toEqual({ type: "error", error: err })
   })
 })
