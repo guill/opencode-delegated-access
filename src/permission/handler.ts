@@ -31,6 +31,7 @@ import { PendingSubjectsMap } from "./pending-subjects.ts"
 import { runSafePath } from "./safe-path.ts"
 import type { SafePathBatcher } from "./safe-path-batcher.ts"
 import { runRiskyPathInBackground } from "./risky-path.ts"
+import { notifyUnhandled } from "./unhandled-notify.ts"
 import type { Logger } from "../log.ts"
 import {
   isDualRepoContext,
@@ -204,6 +205,7 @@ export async function handlePermissionEvent(
         ...base,
         pattern: patterns as unknown,
       })
+    notifyUnhandled({ config: ctx.config, kind: toolType, subject: patterns })
       return
     }
     await handleSubjectPermission({
@@ -221,6 +223,7 @@ export async function handlePermissionEvent(
   if (toolType === EXTERNAL_DIRECTORY_TYPE) {
     if (!ctx.config.externalDirectoryEnabled) {
       log.info("skip: external_directory auto-approval disabled", base)
+      notifyUnhandled({ config: ctx.config, kind: toolType, subject: patterns })
       return
     }
     const path = extractCommand(patterns) // same extraction logic — first pattern
@@ -229,6 +232,7 @@ export async function handlePermissionEvent(
         ...base,
         pattern: patterns as unknown,
       })
+    notifyUnhandled({ config: ctx.config, kind: toolType, subject: patterns })
       return
     }
     const patternsList = Array.isArray(patterns)
@@ -250,6 +254,7 @@ export async function handlePermissionEvent(
   }
 
   log.info("skip: unsupported permission type", base)
+  notifyUnhandled({ config: ctx.config, kind: toolType, subject: patterns })
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +308,7 @@ async function handleSubjectPermission(args: {
       "skip: could not resolve root session (fail-closed to TUI prompt)",
       base,
     )
+    notifyUnhandled({ config: ctx.config, kind: subjectLabel, subject })
     return
   }
   if (rootSessionID !== permission.sessionID) {
@@ -371,6 +377,7 @@ async function handleSubjectPermission(args: {
       ...base,
       error: e instanceof Error ? e.message : String(e),
     })
+    notifyUnhandled({ config: ctx.config, kind: subjectLabel, subject })
     return
   }
 
@@ -401,6 +408,7 @@ async function handleSubjectPermission(args: {
       hasFallbackModel: Boolean(fallbackModel),
       hasConfigOverride: Boolean(ctx.config.classifierModel),
     })
+    notifyUnhandled({ config: ctx.config, kind: subjectLabel, subject })
     return
   }
 

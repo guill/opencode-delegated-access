@@ -24,6 +24,9 @@ vi.mock("../ui/session-tree.ts", () => ({
 vi.mock("./safe-path.ts", () => ({
   runSafePath: vi.fn(),
 }))
+vi.mock("./unhandled-notify.ts", () => ({
+  notifyUnhandled: vi.fn(),
+}))
 vi.mock("./risky-path.ts", () => ({
   runRiskyPathInBackground: vi.fn(),
 }))
@@ -42,6 +45,7 @@ import { getSessionMessages, type MessageEntry } from "../ui/messages.ts"
 import { resolveRootSessionID } from "../ui/session-tree.ts"
 import { runSafePath } from "./safe-path.ts"
 import { runRiskyPathInBackground } from "./risky-path.ts"
+import { notifyUnhandled } from "./unhandled-notify.ts"
 import {
   runFailureNotificationInBackground,
   FailureNotifyRateLimiter,
@@ -194,6 +198,7 @@ beforeEach(() => {
   mockedRisky.mockReset()
   mockedFailureNotify.mockReset()
   mockedFailureNotify.mockResolvedValue(undefined)
+  vi.mocked(notifyUnhandled).mockReset()
   // Default: one user message, no assistant messages. Tests that need
   // assistant-model fallback override this with their own value.
   mockedGetSessionMessages.mockResolvedValue([
@@ -225,6 +230,7 @@ describe("handlePermissionEvent", () => {
     await handlePermissionEvent(basePermission(), ctx)
     expect(mockedClassify).not.toHaveBeenCalled()
     expect(respondCall).not.toHaveBeenCalled()
+    expect(notifyUnhandled).not.toHaveBeenCalled()
   })
 
   it("does nothing for non-bash tool types", async () => {
@@ -232,6 +238,11 @@ describe("handlePermissionEvent", () => {
     await handlePermissionEvent(basePermission({ type: "edit" }), ctx)
     expect(mockedClassify).not.toHaveBeenCalled()
     expect(respondCall).not.toHaveBeenCalled()
+    expect(notifyUnhandled).toHaveBeenCalledWith({
+      config: ctx.config,
+      kind: "edit",
+      subject: "git status",
+    })
   })
 
   it("calls the SDK with response='once' when SAFE and safe-path returns allow", async () => {
@@ -252,6 +263,7 @@ describe("handlePermissionEvent", () => {
     expect(args.path).toEqual({ id: "sess_abc", permissionID: "perm_123" })
     expect(args.body.response).toBe("once")
     expect(mockedRisky).not.toHaveBeenCalled()
+    expect(notifyUnhandled).not.toHaveBeenCalled()
   })
 
   it("does NOT call the SDK when SAFE but user cancels (safe-path returns ask)", async () => {
@@ -359,6 +371,11 @@ describe("handlePermissionEvent", () => {
 
     expect(mockedClassify).not.toHaveBeenCalled()
     expect(respondCall).not.toHaveBeenCalled()
+    expect(notifyUnhandled).toHaveBeenCalledWith({
+      config: ctx.config,
+      kind: "command",
+      subject: "git status",
+    })
   })
 
   it("extracts command from a string pattern", async () => {

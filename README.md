@@ -111,6 +111,7 @@ Use the **per-plugin tuple form** — `[pluginSpec, optionsObject]` — to pass 
         "approvalHistoryEnabled": true,
         "approvalHistoryMax": 20,
         "notifyOnClassifierFailure": true,
+        "notifyOnUnhandled": true,
         "classifierFailureNotifyCooldownMs": 60000
       }
     ]
@@ -134,6 +135,7 @@ Use the **per-plugin tuple form** — `[pluginSpec, optionsObject]` — to pass 
 | `approvalHistoryEnabled` | `true` | Remember each human Approve/Reject decision made via the OpenCode TUI or our notification, and surface recent ones to the classifier as prior-decision context. Session-scoped, in-memory only. |
 | `approvalHistoryMax` | `20` | Per-session cap on how many recent human decisions the classifier sees. `0` disables playback (entries are still recorded; just not surfaced). |
 | `notifyOnClassifierFailure` | `true` | When the classifier ultimately fails to produce a verdict (after retries), fire an informational desktop notification so you know a transient error happened. The notification is **Reject-only** — it never offers a one-click Approve on an unclassified command. The TUI prompt is always shown too. Set `false` to keep failures silent. |
+| `notifyOnUnhandled` | `true` | When the plugin leaves a permission to the TUI prompt without classifying it (edit / webfetch / other unsupported types, a missing command or path, or an unresolvable session or classifier model), fire a plain desktop notification. Together with the RISKY and classifier-failure notifications, every permission that is not auto-approved notifies. Set `false` to keep these silent. |
 | `jevEnabled` | `true` | Pre-screen each request with TypeSafe's [Jev](https://docs.typesafe.ai) before the LLM classifier. Only active when `TYPESAFE_API_KEY` is set. Jev can only fast-path SAFE; it never marks anything RISKY, and any Jev error falls through to the LLM. |
 | `jevSafeThreshold` | `0.8` | Minimum Jev P(safe) (0–1) to auto-classify SAFE without calling the LLM. Below this, the request escalates to the LLM classifier. |
 | `classifierFailureNotifyCooldownMs` | `60000` | Rate-limit window for failure notifications. At most one fires per window; a burst during an outage collapses into a single notification instead of spamming you. `0` disables the rate limit. |
@@ -161,7 +163,7 @@ Anything not matched by a static rule flows into the classifier.
 
 ## Works best on macOS
 
-The desktop notifications with Approve / Reject buttons work via `terminal-notifier` / macOS NotificationCenter. On Linux and Windows the SAFE countdown still works (the notification itself is the timer), but interactive buttons on the RISKY path may not be clickable — OpenCode's in-TUI prompt is always shown too, so you have a reliable fallback on every platform.
+The desktop notifications with Approve / Reject buttons work via `terminal-notifier` / macOS NotificationCenter. On Linux they go through libnotify's `notify-send` (needs a notification server that supports actions); notify-send can't report why a notification closed, so closing a SAFE countdown early counts as Cancel. On Windows the SAFE countdown still works (the notification itself is the timer), but interactive buttons on the RISKY path may not be clickable — OpenCode's in-TUI prompt is always shown too, so you have a reliable fallback on every platform.
 
 ## How it's safe
 

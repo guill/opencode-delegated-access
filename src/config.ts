@@ -95,6 +95,16 @@ export const ConfigSchema = z.object({
   notifyOnClassifierFailure: z.boolean().default(true),
 
   /**
+   * When true (default), fire a desktop notification when the plugin leaves
+   * a permission to the TUI prompt without classifying it — unsupported
+   * permission types (edit, webfetch, …), a missing command/path, or an
+   * unresolvable session/classifier model. Together with the RISKY and
+   * classifier-failure notifications this means every permission that is
+   * NOT auto-approved notifies. Not fired when `enabled` is false.
+   */
+  notifyOnUnhandled: z.boolean().default(true),
+
+  /**
    * Rate-limit window (ms) for classifier-failure notifications. At most one
    * failure notification fires per window; a burst of failures during a
    * sustained outage collapses into a single notification rather than
